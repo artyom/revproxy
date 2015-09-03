@@ -5,26 +5,32 @@ import (
 	"errors"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	_ "net/http/pprof"
 	"net/url"
 	"os"
 	"time"
+
+	"golang.org/x/net/netutil"
 )
 
 func main() {
 	params := struct {
-		Addr string
-		Conf string
-		Prof string
+		Addr    string
+		Conf    string
+		Prof    string
+		MaxConn int
 	}{
-		Addr: "0.0.0.0:8080",
-		Conf: "/etc/revproxy.json",
+		Addr:    "0.0.0.0:8080",
+		Conf:    "/etc/revproxy.json",
+		MaxConn: 1000,
 	}
 	flag.StringVar(&params.Addr, "addr", params.Addr, "`address` to listen at")
 	flag.StringVar(&params.Conf, "conf", params.Conf, "configuration `file` with mapping")
 	flag.StringVar(&params.Prof, "prof", params.Prof, "`address` to expose profile data at")
+	flag.IntVar(&params.MaxConn, "maxconn", params.MaxConn, "maximum number of connections to accept")
 	flag.Parse()
 
 	conf, err := readConfig(params.Conf)
@@ -37,8 +43,12 @@ func main() {
 		log.Fatal(err)
 	}
 
+	ln, err := Listen(params.Addr, params.MaxConn)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	srv := &http.Server{
-		Addr:         params.Addr,
 		Handler:      proxy,
 		ReadTimeout:  65 * time.Second,
 		WriteTimeout: 65 * time.Second,
@@ -48,7 +58,18 @@ func main() {
 			log.Println(http.ListenAndServe(params.Prof, nil))
 		}()
 	}
-	log.Fatal(srv.ListenAndServe())
+	log.Fatal(srv.Serve(ln))
+}
+
+func Listen(addr string, maxconn int) (net.Listener, error) {
+	if maxconn < 1 {
+		return nil, errors.New("maxconn should be positive")
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	return netutil.LimitListener(ln, maxconn), nil
 }
 
 type RevProxy struct {
