@@ -100,6 +100,7 @@ func NewRevProxy(conf Config) (*RevProxy, error) {
 			}
 			rp.buckets[k] = make(chan struct{}, conf.MaxConnsPerBackend)
 			p := httputil.NewSingleHostReverseProxy(dst)
+			v := v // shadow variable
 			p.Transport = &http.Transport{
 				Dial: func(network, addr string) (net.Conn, error) {
 					return net.Dial("unix", v)
