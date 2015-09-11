@@ -11,6 +11,7 @@ import (
 	_ "net/http/pprof"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"golang.org/x/net/netutil"
@@ -88,6 +89,26 @@ func NewRevProxy(conf Config) (*RevProxy, error) {
 	transport := http.DefaultTransport
 	transport.(*http.Transport).MaxIdleConnsPerHost = conf.MaxKeepalivesPerBackend
 	for k, v := range conf.Mapping {
+		if strings.HasPrefix(v, "/") {
+			// destination is unix socket. Make a custom transport
+			// which routes any requests into this socket via
+			// custom dialer, construct fake destination url from
+			// source domain itself
+			dst, err := url.Parse("http://" + k)
+			if err != nil {
+				return nil, err
+			}
+			rp.buckets[k] = make(chan struct{}, conf.MaxConnsPerBackend)
+			p := httputil.NewSingleHostReverseProxy(dst)
+			p.Transport = &http.Transport{
+				Dial: func(network, addr string) (net.Conn, error) {
+					return net.Dial("unix", v)
+				},
+			}
+			rp.backends[k] = p
+			continue
+		}
+		// treat destination as tcp
 		dst, err := url.Parse(v)
 		if err != nil {
 			return nil, err
