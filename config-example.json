@@ -1,0 +1,8 @@
+{
+	"MaxConnsPerBackend": 1000,
+	"MaxKeepalivesPerBackend": 800,
+	"Mapping": {
+		"service1.example.com": "http://192.168.0.100:8080",
+		"service2.example.com": "/run/service.sock"
+	}
+}
